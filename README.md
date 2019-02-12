@@ -1,7 +1,7 @@
 # dziewiona98.github.io
 
 
-...javascript
+```javascript
 
 test = "hello world"
-...
+```
