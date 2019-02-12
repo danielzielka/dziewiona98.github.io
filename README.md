@@ -3,5 +3,6 @@
 
 ```javascript
 
-test = "hello world"
+let test = "hello world"
+
 ```
