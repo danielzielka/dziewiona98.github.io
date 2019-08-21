@@ -1,0 +1,203 @@
+<?php
+
+
+class Database
+{
+
+    /**
+    * Holds the connection object so we only connect once
+    */
+	protected static $instance = null;
+
+    /**
+    * Holds the PDO object instance
+    */
+	protected $PDO;
+
+    /**
+    * Last prepare variable
+    */
+	protected $statement;
+
+    /**
+    * Directory to save the error log files from the document root dir
+    */
+    const ERROR_LOG_DIR = 'logs';
+
+
+    /**
+    * Creates new PDO connection and sets the configuration.
+    * It is used to be saved to an instance variable
+    */
+	protected function __construct()
+	{
+		try {
+
+        	$this->PDO = new PDO(
+				'mysql:host='.DB_HOST.';dbname='.DB_NAME.';charset=utf8;port='.DB_PORT,
+				DB_USER ,
+				DB_PASSWORD,
+				[PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES 'utf8'"]
+			);
+			$this->PDO->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+		} catch(PDOException $e) {
+            $this->saveErrorLog($e);
+			die("Database connection has failed");
+		}
+	}
+
+    /**
+    * Returns the connection object instance.
+    * If database is already connected,
+    * returns the connection object, otherwise
+    * tries to create a new connection.
+    * @return object
+    */
+	public static function instance()
+	{
+		if(self::$instance === null) {
+			self::$instance = new self();
+		}
+		return self::$instance;
+	}
+
+    /**
+    * MySQL query executed by binding params from array.
+    * Binds the values based on $params array key names
+    * @param string $sql
+    * @param array|null $params - $param["key"] = value  ->  :key = value
+    */
+	public function query($sql, $params = array())
+	{
+		$prepare = $this->PDO->prepare($sql);
+		foreach($params as $key => $value) {
+			switch(true) {
+				case is_int($value) : $type = PDO::PARAM_INT; break;
+				case is_bool($value) : $type = PDO::PARAM_BOOL; break;
+				case is_null($value) : $type = PDO::PARAM_NULL; break;
+				default : $type = PDO::PARAM_STR; break;
+			}
+			$prepare->bindValue("$key", $value, $type);
+		}
+		$prepare->execute();
+		$this->statement = $prepare;
+
+		return $this;
+	}
+
+    /**
+    * Returns array with objects.
+    * Each object represents MySQL table row
+    * @param $fetchMode (optional) - standard PDO fetch method
+    * @return array
+    */
+	public function fetchAll($fetchMode = PDO::FETCH_OBJ)
+	{
+		return $this->statement->fetchAll($fetchMode);
+	}
+
+    /**
+    * Returns object that represents a single MySQL table row
+    * @param $fetchMode (optional) - standard PDO fetch method
+    * @return array
+    */
+	public function single($fetchMode = PDO::FETCH_OBJ)
+	{
+		return $this->statement->fetch($fetchMode);
+	}
+
+    /**
+    * Returns the number of rows affected by query.
+    * Includes INSERTs, UPDATEs, SELECTs and DELETEs
+    * @return int
+    */
+	public function numRows()
+	{
+		return $this->statement->rowCount();
+	}
+
+    /**
+    * Returns last ID(auto_increment) from MySQL table.
+    * Works only after INSERTs queries
+    * @return int
+    */
+	public function lastInsertId()
+	{
+		return $this->PDO->lastInsertId();
+	}
+
+    /**
+    * Starts a new SQL transaction
+    * @return boolean
+    */
+	public function beginTransaction()
+	{
+		return $this->PDO->beginTransaction();
+	}
+
+    /**
+    * Commits transaction after success
+    */
+	public function commitTransaction()
+	{
+		if($this->inTransaction()) {
+			$this->PDO->commit();
+		}
+	}
+
+    /**
+    * Rolls back the transaction.
+    * Usually used in "catch(PDOException $e) {"
+    */
+	public function rollbackTransaction()
+	{
+		if($this->inTransaction()) {
+			$this->PDO->rollBack();
+		}
+	}
+
+    /**
+    * Return current SQL, with binded params from $params array.
+    * @return string
+    */
+	public function debugQuery($sql, $params = [])
+	{
+		foreach($params as $key => $value) {
+			$sql = preg_replace('/:'.$key.'/',"'".$value."'",$sql);
+		}
+
+		return $sql;
+	}
+
+    /**
+    * Checks if a transaction is currently active within the driver.
+    * @return boolean
+    */
+	protected function inTransaction()
+	{
+		return $this->PDO->inTransaction();
+	}
+
+    /**
+    * Saves error log file from PDOException object
+	* @param object $exceptionObject
+    */
+    protected function saveErrorLog($exceptionObject) {
+        $fileName = 'DBLOG_'.date('Y-m-d_H-i-s').'.txt';
+		$filePath = $_SERVER['DOCUMENT_ROOT'].DIRECTORY_SEPARATOR.self::ERROR_LOG_DIR;
+		$filePathName = $filePath.DIRECTORY_SEPARATOR.$fileName;
+
+        $file = fopen($filePathName, 'w');
+
+        ob_start();
+        var_dump($exceptionObject);
+        $fileContent = ob_get_contents();
+        ob_end_clean();
+
+        fwrite($file, $fileContent);
+        fclose($file);
+    }
+
+}
+
